@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MN Doors">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A0D0A" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<title>MN Lawn Pros Door Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Michroma&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* Layout idea: the live map runs edge to edge; search and status chips float on it like a maps app. White brand header, black hero card for today's numbers, forest green for actions, lime for highlights. */
+:root{
+  --bg:#F2F4F2; --surface:#FFFFFF; --ink:#0B0F0B; --muted:#5A625A; --line:#D3D3D3;
+  --accent:#1E6B22; --on-accent:#FFFFFF; --accent-soft:#E6F1E6; --lime:#32CD32;
+  --logo-m:#1E5E22; --logo-n:#000000; --hero:#0B0F0B; --on-hero:#FFFFFF;
+  --s-none:#8B908B; --s-noanswer:#D98A00; --s-notint:#C93A2E; --s-interested:#32CD32;
+  --s-callback:#2463D1; --s-sold:#1B5E1F; --s-dnk:#000000;
+  --display:"Michroma","Eurostile","Arial Black",Arial,sans-serif;
+  --body:"Manrope",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --shadow:0 8px 28px rgba(8,20,8,.18); --shadow-sm:0 2px 10px rgba(8,20,8,.14);
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme:dark;
+    --bg:#0A0D0A; --surface:#151A15; --ink:#F1F4F1; --muted:#A9A9A9; --line:#2A312A;
+    --accent:#32CD32; --on-accent:#06150A; --accent-soft:#16301A; --lime:#32CD32;
+    --logo-m:#3DBB40; --logo-n:#FFFFFF; --hero:#000000; --on-hero:#FFFFFF;
+    --s-none:#8B908B; --s-noanswer:#E8A020; --s-notint:#E3574B; --s-interested:#32CD32;
+    --s-callback:#5B8FF0; --s-sold:#1F7A25; --s-dnk:#000000;
+    --shadow:0 8px 28px rgba(0,0,0,.6); --shadow-sm:0 2px 10px rgba(0,0,0,.5);
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.4;-webkit-text-size-adjust:100%;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+svg.i{width:22px;height:22px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+#app{height:100%;display:flex;flex-direction:column;background:var(--bg)}
+
+/* brand header */
+header{display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--surface);border-bottom:1px solid var(--line)}
+.logo{height:30px;width:76px;flex:none;display:block}
+.logo .m{fill:var(--logo-m)} .logo .n{fill:var(--logo-n)}
+.word{display:flex;flex-direction:column;line-height:1.1;min-width:0}
+.word b{font-family:var(--display);font-weight:400;font-size:13px;letter-spacing:.1em;white-space:nowrap}
+.word span{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.today{margin-left:auto;display:flex;align-items:baseline;gap:6px;padding:6px 12px;border-radius:999px;background:var(--hero);color:var(--on-hero);white-space:nowrap}
+.today b{font-family:var(--display);font-weight:400;font-size:15px;color:var(--lime);font-variant-numeric:tabular-nums}
+.today span{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+
+main{flex:1;min-height:0;position:relative}
+.view{position:absolute;inset:0;display:flex;flex-direction:column}
+.view[hidden]{display:none}
+
+/* map */
+#mapbox{flex:1;min-height:0;position:relative}
+#map{position:absolute;inset:0;background:var(--line);font-family:var(--body)}
+.leaflet-container{cursor:crosshair}
+.leaflet-control-attribution{font-size:10px}
+.overlay{position:absolute;left:0;right:0;top:0;z-index:500;padding:10px 12px 0;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.overlay > *{pointer-events:auto}
+#find{display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 14px;border-radius:24px;background:var(--surface);box-shadow:var(--shadow-sm);border:1px solid var(--line);color:var(--muted)}
+#findq{flex:1;min-width:0;height:100%;border:0;background:none;outline:none;color:var(--ink);font-weight:500}
+#findq::placeholder{color:var(--muted)}
+#find button{height:36px;padding:0 16px;border:0;border-radius:18px;background:var(--accent);color:var(--on-accent);font-weight:700}
+.legend{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -12px;padding:0 12px 4px}
+.legend::-webkit-scrollbar{display:none}
+.chip{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:17px;background:var(--surface);font-size:13px;font-weight:600;white-space:nowrap;flex:none;box-shadow:var(--shadow-sm)}
+.chip .sw{width:11px;height:11px;border-radius:50%;flex:none}
+.chip .n{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:700}
+.chip.off{opacity:.55;text-decoration:line-through}
+.chip.on{background:var(--hero);color:var(--on-hero);border-color:var(--hero)}
+.chip.on .n{color:var(--lime)}
+.plain .chip{box-shadow:none}
+.pin{position:relative;width:32px;height:32px;border-radius:50%;border:3px solid #fff;color:#fff;font-weight:800;font-size:15px;line-height:1;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.55);cursor:pointer}
+.pin small{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:3px;font-size:11px;font-weight:700;color:#0B0F0B;background:#fff;border-radius:5px;padding:0 5px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.pin.draft{background:rgba(255,255,255,.4);border:3px dashed #0B0F0B;box-shadow:none;animation:pulse 1s ease-in-out infinite alternate}
+.pin.due{outline:3px solid var(--s-callback);outline-offset:2px}
+@keyframes pulse{to{transform:scale(1.25)}}
+@media (prefers-reduced-motion: reduce){.pin.draft{animation:none}}
+.me{width:18px;height:18px;border-radius:50%;background:#1A73E8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.35),0 1px 4px rgba(0,0,0,.4)}
+.fabs{position:absolute;right:12px;bottom:28px;display:flex;flex-direction:column;gap:10px;z-index:500;align-items:flex-end}
+.fab{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;min-width:48px;padding:0 13px;border-radius:24px;border:1px solid var(--line);background:var(--surface);font-weight:700;font-size:14px;box-shadow:var(--shadow-sm)}
+.fab.primary{height:56px;padding:0 20px;border-radius:28px;background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-size:15px;box-shadow:var(--shadow)}
+.hint{position:absolute;left:12px;bottom:28px;z-index:500;background:var(--hero);color:var(--on-hero);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:600;box-shadow:var(--shadow-sm);max-width:48%}
+
+/* list, stats, backup */
+.scroll{flex:1;min-height:0;overflow-y:auto;padding:0 16px 20px}
+.wrap{max-width:760px;margin:0 auto;width:100%}
+.pagehead{padding:18px 16px 0}
+.pagehead h1{font-family:var(--display);font-weight:400;font-size:20px;letter-spacing:.06em;text-transform:uppercase;margin:0;text-wrap:balance}
+.pagehead p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.toolbar{display:flex;gap:8px;padding:12px 16px 10px}
+.toolbar input{flex:1;min-width:0;height:46px;border:1px solid var(--line);border-radius:23px;background:var(--surface);padding:0 16px;font-weight:500}
+.plain{padding:0 16px 4px;margin:0 auto}
+.row{display:flex;gap:12px;align-items:flex-start;width:100%;text-align:left;padding:14px;margin-top:8px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+.row .badge{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:800}
+.row .t{font-weight:700}
+.row .m{font-size:14px;color:var(--muted);overflow-wrap:anywhere}
+.row .due{color:var(--s-callback);font-weight:700}
+.row .body{flex:1;min-width:0}
+.empty{margin:48px auto;padding:0 16px;text-align:center;color:var(--muted);max-width:420px}
+.empty h2{font-family:var(--display);font-weight:400;font-size:18px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink);margin:0 0 8px;text-wrap:balance}
+h3.sec{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin:22px 0 8px}
+.hero{background:var(--hero);color:var(--on-hero);border-radius:18px;padding:18px;margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.hero .cap{grid-column:1/-1;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--lime)}
+.hero .v{font-family:var(--display);font-size:30px;line-height:1.1;font-variant-numeric:tabular-nums}
+.hero .l{font-size:12px;font-weight:600;color:#A9A9A9;margin-top:2px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 12px}
+.tile .v{font-family:var(--display);font-size:22px;line-height:1.1;font-variant-numeric:tabular-nums}
+.tile .l{font-size:12px;font-weight:600;color:var(--muted);margin-top:4px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.bars{display:flex;flex-direction:column;gap:10px}
+.bar{display:grid;grid-template-columns:112px 1fr 34px;gap:8px;align-items:center;font-size:14px;font-weight:600}
+.bar .track{height:12px;border-radius:6px;background:var(--bg);overflow:hidden}
+.bar .fill{display:block;height:100%;border-radius:6px;min-width:2px}
+.bar .c{text-align:right;font-variant-numeric:tabular-nums;font-weight:800}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;height:140px}
+.week .d{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
+.week .col{width:64%;background:var(--accent);border-radius:6px 6px 2px 2px;min-height:3px}
+.week .d.now .col{background:var(--lime)}
+.week .num{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-top:10px}
+.card h2{font-size:17px;font-weight:800;margin:0 0 4px}
+.card p{margin:0 0 12px;color:var(--muted);font-size:15px;max-width:65ch}
+.card .actions{margin-top:0}
+.card.warn{border-left:5px solid var(--s-noanswer)}
+.card.cloud{border-top:5px solid var(--accent)}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:15px}
+.kv span:first-child{color:var(--muted);font-weight:600}
+.kv span:last-child{font-weight:700;text-align:right;overflow-wrap:anywhere}
+.msg{font-size:14px;font-weight:600;margin:10px 0 0;color:var(--s-notint)}
+.msg.ok{color:var(--accent)}
+#syncLine.ok{color:var(--accent)} #syncLine.bad{color:var(--s-noanswer)}
+
+/* tabs */
+nav{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border-top:1px solid var(--line);flex:none;padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
+nav button{display:flex;flex-direction:column;align-items:center;gap:2px;height:52px;border:0;background:none;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);justify-content:center}
+nav button[aria-current="page"]{color:var(--accent);background:var(--accent-soft)}
+
+/* sheet */
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .15s;z-index:2000}
+#sheet{position:fixed;left:0;right:0;bottom:0;max-width:760px;margin:0 auto;max-height:88%;overflow-y:auto;background:var(--surface);border-radius:22px 22px 0 0;box-shadow:var(--shadow);padding:10px 16px calc(20px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .2s ease-out;z-index:2001}
+#sheet::before{content:"";display:block;width:40px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 12px}
+body.sheet-open #scrim{opacity:1;pointer-events:auto}
+body.sheet-open #sheet{transform:none}
+@media (prefers-reduced-motion: reduce){#sheet,#scrim{transition:none}}
+.sh-head{display:flex;align-items:flex-start;gap:10px}
+.sh-head h2{font-size:22px;font-weight:800;line-height:1.15;margin:0;overflow-wrap:anywhere;text-wrap:balance}
+.sh-sub{font-size:14px;color:var(--muted);margin:3px 0 0}
+.xbtn{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:var(--bg);display:grid;place-items:center}
+.grp{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin:16px 0 8px}
+.sgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.sbtn{display:flex;align-items:center;gap:10px;min-height:56px;padding:8px 12px;border:1.5px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);font-weight:700;text-align:left}
+.sbtn .g{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800}
+.sbtn[aria-pressed="true"]{border-color:transparent;box-shadow:var(--shadow-sm)}
+.sbtn[aria-pressed="true"] .g{background:rgba(255,255,255,.28);color:inherit}
+.sbtn.wide{grid-column:1/-1}
+.field{display:flex;flex-direction:column;gap:5px;margin-top:12px}
+.field label{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.field input,.field textarea{border:1.5px solid var(--line);border-radius:12px;background:var(--bg);padding:11px 13px;min-height:48px;width:100%;font-weight:500}
+.field input:focus,.field textarea:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+.field textarea{min-height:80px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:420px){.two{grid-template-columns:1fr}}
+.hist{list-style:none;margin:0;padding:0;font-size:14px;font-weight:600}
+.hist li{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+.hist .sw{width:10px;height:10px;border-radius:50%;flex:none}
+.hist time{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:500}
+.actions{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+.btn{min-height:50px;padding:0 18px;border-radius:25px;border:1.5px solid var(--line);background:var(--surface);font-weight:700;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:var(--ink)}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);flex:1}
+.btn.danger{color:var(--s-notint)}
+.btn.danger.armed{background:var(--s-notint);color:#fff;border-color:var(--s-notint)}
+#toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--hero);color:var(--on-hero);padding:11px 16px;border-radius:12px;font-size:14px;font-weight:600;z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%;box-shadow:var(--shadow)}
+#toast.show{opacity:1}
+/* status colors last so they win over component backgrounds */
+.s-none{background:var(--s-none);color:#fff} .s-noanswer{background:var(--s-noanswer);color:#fff} .s-notint{background:var(--s-notint);color:#fff}
+.s-interested{background:var(--s-interested);color:#06150A} .s-callback{background:var(--s-callback);color:#fff} .s-sold{background:var(--s-sold);color:#fff} .s-dnk{background:var(--s-dnk);color:#fff}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <svg class="logo" viewBox="0 0 2000 789" role="img" aria-label="MN Lawn Pros"><path class="m" fill-rule="evenodd" d="M151 167 151 753 358 753 358 382 343 357 320 323 297 293 271 263 241 233 212 208 188 190ZM66 61 86 67 109 76 151 96 182 114 203 128 237 154 262 176 308 224 342 267 366 302 395 351 421 402 442 450 462 503 480 559 499 631 512 694 520 745 520 752 521 753 650 753 637 707 613 636 591 579 559 506 522 433 485 370 445 311 404 259 378 230 328 182 289 151 250 125 201 99 156 81 114 69 84 63ZM196 35 239 57 285 85 330 117 367 147 399 176 444 222 476 259 516 311 546 355 576 404 606 459 633 515 662 584 682 639 704 711 714 753 820 753 1054 360 1055 361 1055 753 1262 753 1263 752 1263 53 994 53 770 442 764 450 737 409 707 368 679 333 645 294 574 223 538 192 494 158 465 138 426 114 370 85 347 75 310 61 274 50 230 40Z"/><path class="n" fill-rule="evenodd" d="M1292 54 1292 433 1571 743 1581 753 1937 753 1937 53 1730 53 1730 549 1729 550Z"/></svg>
+    <div class="word"><b>LAWN PROS</b><span id="syncLine">Door tracker</span></div>
+    <div class="today" aria-live="polite"><b id="todayN">0</b><span>today</span></div>
+  </header>
+  <main>
+    <section class="view" id="v-map">
+      <div id="mapbox">
+        <div id="map"></div>
+        <div class="overlay">
+          <form id="find" role="search">
+            <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input id="findq" type="search" placeholder="Go to a street or city" aria-label="Go to a street or city" autocomplete="off">
+            <button type="submit">Go</button>
+          </form>
+          <div class="legend" id="legend"></div>
+        </div>
+        <div class="hint" id="hint">Tap a house to drop a pin.</div>
+        <div class="fabs">
+          <button class="fab" data-act="layer"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><span id="layerBtn">Satellite</span></button>
+          <button class="fab" data-act="locate" aria-label="Go to my location"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+          <button class="fab primary" data-act="pin-here"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.800 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Pin where I am</button>
+        </div>
+      </div>
+    </section>
+    <section class="view" id="v-doors" hidden></section>
+    <section class="view" id="v-stats" hidden></section>
+    <section class="view" id="v-backup" hidden></section>
+  </main>
+  <nav>
+    <button data-view="map" aria-current="page"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4L3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5L9 4z"/><path d="M9 4v13.5M15 6.5V20"/></svg>Map</button>
+    <button data-view="doors"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Doors</button>
+    <button data-view="stats"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Stats</button>
+    <button data-view="backup"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>Account</button>
+  </nav>
+</div>
+<div id="scrim" data-act="sheet-close"></div>
+<section id="sheet" role="dialog" aria-modal="true" aria-label="Door details"></section>
+<div id="toast" role="status"></div>
+<input id="restoreFile" type="file" accept="application/json,.json" hidden>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+<script>
+"use strict";
+const STATUS = [
+  {k:'none',       label:'Not knocked',    g:'·'},
+  {k:'noanswer',   label:'No answer',      g:'–'},
+  {k:'notint',     label:'Not interested', g:'✕'},
+  {k:'interested', label:'Interested',     g:'★'},
+  {k:'callback',   label:'Come back',      g:'↻'},
+  {k:'sold',       label:'Sold',           g:'$'},
+  {k:'dnk',        label:'Do not knock',   g:'!'}
+];
+const ST = Object.fromEntries(STATUS.map(s => [s.k, s]));
+const ANSWERED = new Set(['notint','interested','callback','sold']);
+const KNOCK = new Set(['noanswer','notint','interested','callback','sold']);
+const LS = {doors:'knocklog-live-doors', view:'knocklog-live-view', layer:'knocklog-live-layer', backup:'knocklog-live-backup',
+  dirty:'knocklog-live-dirty', dels:'knocklog-live-dels', uid:'knocklog-live-uid', synced:'knocklog-live-synced'};
+/* Cloud sync settings. These two values are safe to publish: every row is locked to its owner's login by the database. */
+const CLOUD = {url:'https://zbfibivxrqkworskpwsv.supabase.co', key:'sb_publishable_rVaoaGxDnWmQs8GhlMne6A_60c-KkFk'};
+
+const S = { doors:[], view:'map', hidden:new Set(), listFilter:'all', q:'', sheet:null, me:null, moved:false, storageOk:true };
+let map, pinLayer, draftMarker = null, meMarker = null, meCircle = null, layers = {}, curLayer = 'street';
+
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const clone = o => JSON.parse(JSON.stringify(o));
+const pad = n => String(n).padStart(2,'0');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const dayKey = t => { const d = new Date(t); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); };
+const today = () => dayKey(Date.now());
+const fmtWhen = t => { const d = new Date(t), time = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  return dayKey(t) === today() ? 'Today ' + time : d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + time; };
+const fmtDate = k => { if(!k) return ''; const [y,m,d] = k.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'}); };
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 3500); }
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k, v){ try{ localStorage.setItem(k, v); return true; }catch(e){ return false; } }
+
+/* ---------- storage: this phone's browser ---------- */
+function load(){ try{ const j = JSON.parse(lsGet(LS.doors) || '[]'); if(Array.isArray(j)) S.doors = j.filter(validDoor); }catch(e){ S.doors = []; } }
+function save(){ const ok = lsSet(LS.doors, JSON.stringify(S.doors)); if(!ok && S.storageOk) toast("Couldn't save on this phone. Storage is full or blocked. Download a backup now."); S.storageOk = ok; }
+function validDoor(d){ return d && typeof d.id === 'string' && isFinite(d.lat) && isFinite(d.lng) && Math.abs(d.lat) <= 90 && Math.abs(d.lng) <= 180; }
+function normDoor(d){ return {id:String(d.id), lat:+d.lat, lng:+d.lng, status:ST[d.status] ? d.status : 'none', address:String(d.address||''), name:String(d.name||''), phone:String(d.phone||''),
+  notes:String(d.notes||''), follow:/^\d{4}-\d{2}-\d{2}$/.test(d.follow||'') ? d.follow : '', visits:Array.isArray(d.visits) ? d.visits.filter(v => v && isFinite(v.t) && ST[v.s]).map(v => ({t:+v.t, s:v.s})) : [], created:+d.created||Date.now(), updated:+d.updated||Date.now()}; }
+function putDoor(d){ d.updated = Date.now(); const i = S.doors.findIndex(x => x.id === d.id); if(i >= 0) S.doors[i] = d; else S.doors.push(d); save(); markDirty(d.id); }
+function removeDoor(id){ S.doors = S.doors.filter(x => x.id !== id); save(); dirty.delete(id); dels[id] = Date.now(); saveMeta(); scheduleSync(); }
+
+/* ---------- cloud sync: saved on the phone first, then copied to your account ---------- */
+let sb = null, session = null, syncTimer = null, syncing = false, again = false, syncState = 'idle', lastPull = 0, authMsg = '', authOk = false, authBusy = false;
+let dirty = new Set(), dels = {};
+try{ dirty = new Set(JSON.parse(lsGet(LS.dirty) || '[]')); dels = JSON.parse(lsGet(LS.dels) || '{}') || {}; }catch(e){}
+const cloudReady = () => !!sb;
+function saveMeta(){ lsSet(LS.dirty, JSON.stringify([...dirty])); lsSet(LS.dels, JSON.stringify(dels)); }
+function markDirty(id){ dirty.add(id); saveMeta(); scheduleSync(); }
+function scheduleSync(ms){ setSync(); if(!session) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(false), ms || 1500); }
+function pendingCount(){ return dirty.size + Object.keys(dels).length; }
+function setSync(){
+  const el = $('#syncLine'); if(!el) return; el.className = '';
+  if(!cloudReady()){ el.textContent = 'Door tracker'; return; }
+  if(!session){ el.textContent = 'Not signed in'; el.classList.add('bad'); }
+  else if(syncing){ el.textContent = 'Syncing…'; }
+  else if(syncState === 'offline'){ el.textContent = 'Offline · saved on phone'; el.classList.add('bad'); }
+  else if(syncState === 'error'){ el.textContent = 'Sync paused · saved on phone'; el.classList.add('bad'); }
+  else if(pendingCount()){ el.textContent = 'Saving…'; }
+  else { el.textContent = 'Synced'; el.classList.add('ok'); }
+}
+async function syncNow(pull){
+  if(!sb || !session) return;
+  if(syncing){ again = true; return; }
+  if(navigator.onLine === false){ syncState = 'offline'; setSync(); return; }
+  syncing = true; again = false; setSync();
+  const uidNow = session.user.id;
+  try{
+    const rows = [...dirty].map(id => S.doors.find(d => d.id === id)).filter(Boolean)
+      .map(d => ({user_id:uidNow, id:d.id, data:d, updated_at:d.updated || Date.now(), deleted:false}))
+      .concat(Object.keys(dels).map(id => ({user_id:uidNow, id, data:{}, updated_at:dels[id], deleted:true})));
+    for(let i = 0; i < rows.length; i += 200){ const r = await sb.from('doors').upsert(rows.slice(i, i+200), {onConflict:'user_id,id'}); if(r.error) throw r.error; }
+    rows.forEach(r => { if(r.deleted){ if(dels[r.id] === r.updated_at) delete dels[r.id]; }
+      else { const d = S.doors.find(x => x.id === r.id); if(!d || (d.updated || 0) === r.updated_at) dirty.delete(r.id); } });
+    saveMeta();
+    if(pull){
+      const seen = new Set(); let from = 0, changed = false;
+      for(;;){ const r = await sb.from('doors').select('id,data,updated_at,deleted').order('id').range(from, from+999); if(r.error) throw r.error;
+        r.data.forEach(row => { seen.add(row.id); if(dirty.has(row.id) || dels[row.id]) return;
+          const i = S.doors.findIndex(d => d.id === row.id);
+          if(row.deleted){ if(i >= 0 && (S.doors[i].updated || 0) <= row.updated_at){ S.doors.splice(i, 1); changed = true; } }
+          else if(row.data && validDoor(row.data)){ if(i < 0){ S.doors.push(normDoor(row.data)); changed = true; } else if(row.updated_at > (S.doors[i].updated || 0)){ S.doors[i] = normDoor(row.data); changed = true; } } });
+        if(r.data.length < 1000) break; from += 1000; }
+      let missing = 0; S.doors.forEach(d => { if(!seen.has(d.id) && !dirty.has(d.id)){ dirty.add(d.id); missing++; } });
+      if(missing){ saveMeta(); again = true; }
+      lastPull = Date.now();
+      if(changed){ save(); if(!S.sheet) render(); }
+    }
+    syncState = 'ok'; lsSet(LS.synced, String(Date.now()));
+  }catch(e){ syncState = navigator.onLine === false ? 'offline' : 'error'; }
+  syncing = false; setSync(); if(S.view === 'backup' && !S.sheet) renderBackup();
+  if(again && syncState === 'ok') syncNow(false);
+}
+function initCloud(){
+  if(!/^https:\/\//.test(CLOUD.url) || !CLOUD.key || !window.supabase || !window.supabase.createClient) return;
+  try{ sb = window.supabase.createClient(CLOUD.url, CLOUD.key); }catch(e){ sb = null; return; }
+  sb.auth.onAuthStateChange((ev, s) => {
+    const was = session && session.user.id; session = s || null;
+    if(session && session.user.id !== was){
+      const prev = lsGet(LS.uid);
+      if(prev && prev !== session.user.id && pendingCount() === 0){ S.doors = []; save(); }
+      lsSet(LS.uid, session.user.id); authMsg = '';
+      setTimeout(() => syncNow(true), 0);
+    }
+    setSync(); if(S.view === 'backup') renderBackup(); else if(!S.sheet) render();
+  });
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && session) syncNow(Date.now() - lastPull > 120000); });
+  window.addEventListener('online', () => { if(session) syncNow(true); });
+  window.addEventListener('offline', () => { syncState = 'offline'; setSync(); });
+}
+async function authGo(kind){
+  const email = ($('#a-email').value || '').trim(), password = $('#a-pass').value || '';
+  if(!email || !password){ authOk = false; authMsg = 'Enter your email and a password.'; renderBackup(); return; }
+  if(kind === 'up' && password.length < 8){ authOk = false; authMsg = 'Use a password with at least 8 characters.'; renderBackup(); return; }
+  if(authBusy) return; authBusy = true; authMsg = ''; S.authEmail = email;
+  try{
+    if(kind === 'in'){ const r = await sb.auth.signInWithPassword({email, password}); if(r.error) throw r.error; }
+    else { const r = await sb.auth.signUp({email, password, options:{emailRedirectTo: location.origin + location.pathname}}); if(r.error) throw r.error;
+      if(!r.data.session){ authOk = true; authMsg = 'Account created. Open the confirmation email we just sent, tap the link, then sign in here.'; } }
+  }catch(e){ authOk = false; const m = String((e && e.message) || '');
+    authMsg = /invalid login/i.test(m) ? "That email and password don't match an account." : /not confirmed/i.test(m) ? 'Confirm your email first: open the message from Supabase and tap the link.'
+      : /already registered/i.test(m) ? 'That email already has an account. Tap Sign in instead.' : /fetch|network/i.test(m) ? "Couldn't reach the cloud. Check your connection and try again." : (m || 'That did not work. Try again.'); }
+  authBusy = false; if(!session) renderBackup();
+}
+
+/* ---------- derived ---------- */
+const isDue = d => d.follow && d.follow <= today() && d.status !== 'sold' && d.status !== 'dnk';
+const lastVisit = d => d.visits && d.visits.length ? d.visits[d.visits.length-1] : null;
+const houseNo = d => { const m = /^\s*(\d+[A-Za-z]?)\b/.exec(d.address || ''); return m ? m[1] : ''; };
+function counts(){ const c = {}; STATUS.forEach(s => c[s.k] = 0); S.doors.forEach(d => { c[d.status] = (c[d.status]||0) + 1; }); return c; }
+function knocksToday(){ const td = today(); let n = 0; S.doors.forEach(d => (d.visits || []).forEach(v => { if(KNOCK.has(v.s) && dayKey(v.t) === td) n++; })); return n; }
+
+/* ---------- map ---------- */
+function initMap(){
+  map = L.map('map', {zoomControl:false, maxZoom:21, tap:false});
+  layers.street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:21, maxNativeZoom:19, attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'});
+  layers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:21, maxNativeZoom:19, attribution:'Imagery &copy; Esri and its data providers'});
+  setLayer(lsGet(LS.layer) === 'satellite' ? 'satellite' : 'street');
+  pinLayer = L.layerGroup().addTo(map);
+  let v = null; try{ v = JSON.parse(lsGet(LS.view) || 'null'); }catch(e){}
+  if(v && isFinite(v.lat) && isFinite(v.lng) && isFinite(v.z)){ map.setView([v.lat, v.lng], v.z); S.moved = true; }
+  else if(S.doors.length){ map.fitBounds(L.latLngBounds(S.doors.map(d => [d.lat, d.lng])).pad(0.2), {maxZoom:19}); S.moved = true; }
+  else map.setView([45.2, -93.4], 11);
+  map.on('moveend', () => { const c = map.getCenter(); lsSet(LS.view, JSON.stringify({lat:c.lat, lng:c.lng, z:map.getZoom()})); });
+  map.on('click', e => { if(S.sheet) return;
+    if(map.getZoom() < 16){ toast('Zoom in closer to drop a pin on the right house.'); return; }
+    newDoor(e.latlng.lat, e.latlng.lng); });
+  startGps();
+}
+function setLayer(k){ if(layers[curLayer]) map.removeLayer(layers[curLayer]); curLayer = k; layers[k].addTo(map); lsSet(LS.layer, k); $('#layerBtn').textContent = k === 'street' ? 'Satellite' : 'Street map'; }
+function pinIcon(d){ const n = houseNo(d), s = ST[d.status] || ST.none;
+  return L.divIcon({className:'', iconSize:[32,32], iconAnchor:[16,16], html:'<div class="pin s-'+esc(d.status)+(isDue(d) ? ' due' : '')+'">'+s.g+(n ? '<small>'+esc(n)+'</small>' : '')+'</div>'}); }
+function drawPins(){
+  if(!map) return;
+  const c = counts();
+  $('#legend').innerHTML = STATUS.map(s => '<button class="chip'+(S.hidden.has(s.k) ? ' off' : '')+'" data-act="toggle-status" data-k="'+s.k+'" aria-pressed="'+(!S.hidden.has(s.k))+'"><span class="sw s-'+s.k+'"></span>'+s.label+' <span class="n">'+c[s.k]+'</span></button>').join('');
+  pinLayer.clearLayers();
+  S.doors.forEach(d => { if(S.hidden.has(d.status)) return;
+    L.marker([d.lat, d.lng], {icon:pinIcon(d), title:(d.address || 'Door') + ', ' + (ST[d.status] || ST.none).label, keyboard:true})
+      .on('click', () => openDoor(d.id)).addTo(pinLayer); });
+  if(draftMarker){ map.removeLayer(draftMarker); draftMarker = null; }
+  if(S.sheet && S.sheet.isNew){ const d = S.sheet.door;
+    draftMarker = L.marker([d.lat, d.lng], {interactive:false, icon:L.divIcon({className:'', iconSize:[32,32], iconAnchor:[16,16], html:'<div class="pin draft"></div>'})}).addTo(map); }
+  $('#hint').hidden = S.doors.length > 0;
+}
+function startGps(){
+  if(!navigator.geolocation) return;
+  navigator.geolocation.watchPosition(p => {
+    S.me = {lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy || 0};
+    const ll = [S.me.lat, S.me.lng];
+    if(!meMarker){ meCircle = L.circle(ll, {radius:S.me.acc, color:'#1A73E8', weight:1, fillOpacity:.12, interactive:false}).addTo(map);
+      meMarker = L.marker(ll, {interactive:false, zIndexOffset:-100, icon:L.divIcon({className:'', iconSize:[18,18], iconAnchor:[9,9], html:'<div class="me"></div>'})}).addTo(map); }
+    else { meMarker.setLatLng(ll); meCircle.setLatLng(ll); meCircle.setRadius(S.me.acc); }
+    if(!S.moved){ S.moved = true; map.setView(ll, 18); }
+  }, err => { S.gpsErr = err && err.code; }, {enableHighAccuracy:true, maximumAge:5000, timeout:20000});
+}
+function gpsHelp(){ return S.gpsErr === 1 ? 'Location is turned off for this page. Allow it in your browser settings, then reload.' : "Still finding your location. Make sure location is on and you're outside."; }
+
+/* ---------- address lookup (OpenStreetMap, 1 request per second) ---------- */
+let geoChain = Promise.resolve(), lastGeo = 0;
+function geoQueue(fn){ geoChain = geoChain.then(async () => { const w = 1100 - (Date.now() - lastGeo); if(w > 0) await sleep(w); lastGeo = Date.now(); return fn(); }).catch(() => null); return geoChain; }
+function reverseGeo(lat, lng){ return geoQueue(async () => {
+  const r = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat='+lat.toFixed(6)+'&lon='+lng.toFixed(6), {headers:{Accept:'application/json'}});
+  if(!r.ok) return null; const a = (await r.json()).address || {};
+  return [a.house_number, a.road || a.pedestrian || a.residential || a.path || ''].filter(Boolean).join(' ') || null; }); }
+function fillAddress(id, lat, lng){
+  reverseGeo(lat, lng).then(addr => { if(!addr) return;
+    if(S.sheet && S.sheet.door.id === id){ const d = S.sheet.door; if(d.address) return; d.address = addr;
+      const inp = $('#f-address'); if(inp && !inp.value) inp.value = addr; const h = $('#sh-title'); if(h) h.textContent = addr;
+      if(!S.sheet.isNew){ putDoor(clone(d)); drawPins(); } }
+    else { const d = S.doors.find(x => x.id === id); if(d && !d.address){ d.address = addr; putDoor(d); render(); } } });
+}
+
+/* ---------- views ---------- */
+function render(){
+  document.querySelectorAll('nav button').forEach(b => b.removeAttribute('aria-current'));
+  $('nav button[data-view="'+S.view+'"]').setAttribute('aria-current', 'page');
+  ['map','doors','stats','backup'].forEach(v => { $('#v-'+v).hidden = v !== S.view; });
+  $('#todayN').textContent = knocksToday(); setSync();
+  if(S.view === 'map'){ if(map){ drawPins(); map.invalidateSize(); } }
+  else if(S.view === 'doors') renderDoors(); else if(S.view === 'stats') renderStats(); else renderBackup();
+}
+function renderDoors(){
+  const el = $('#v-doors'), c = counts(), due = S.doors.filter(isDue).length;
+  if(!$('#q')){ el.innerHTML = '<div class="wrap toolbar"><input id="q" type="search" placeholder="Search address, name or notes" aria-label="Search doors"></div><div class="legend plain wrap" id="lf"></div><div class="scroll"><div class="wrap" id="list"></div></div>'; $('#q').value = S.q; }
+  const chip = (k, label, n, sw) => '<button class="chip'+(S.listFilter === k ? ' on' : '')+'" data-act="list-filter" data-k="'+k+'">'+(sw ? '<span class="sw s-'+k+'"></span>' : '')+label+' <span class="n">'+n+'</span></button>';
+  $('#lf').innerHTML = chip('all','All',S.doors.length) + chip('due','Follow-ups due',due) + STATUS.map(s => chip(s.k, s.label, c[s.k], true)).join('');
+  const q = S.q.trim().toLowerCase();
+  let rows = S.doors.filter(d => S.listFilter === 'all' ? true : S.listFilter === 'due' ? isDue(d) : d.status === S.listFilter);
+  if(q) rows = rows.filter(d => [d.address,d.name,d.phone,d.notes].join(' ').toLowerCase().includes(q));
+  rows.sort((a,b) => (b.updated||0) - (a.updated||0));
+  $('#list').innerHTML = rows.length ? rows.map(d => { const lv = lastVisit(d), s = ST[d.status] || ST.none;
+    return '<button class="row" data-act="door" data-id="'+esc(d.id)+'"><span class="badge s-'+esc(d.status)+'">'+s.g+'</span><span class="body"><div class="t">'+esc(d.address || 'No address yet')+'</div>'
+      + '<div class="m">'+s.label+(d.name ? ' · '+esc(d.name) : '')+(d.phone ? ' · '+esc(d.phone) : '')+(lv ? ' · '+fmtWhen(lv.t) : '')+'</div>'
+      + (d.follow ? '<div class="m'+(isDue(d) ? ' due' : '')+'">Follow up '+esc(fmtDate(d.follow))+'</div>' : '')
+      + (d.notes ? '<div class="m">'+esc(d.notes)+'</div>' : '')+'</span></button>'; }).join('')
+    : '<div class="empty"><h2>'+(S.doors.length ? 'No doors match' : 'No doors yet')+'</h2><p>'+(S.doors.length ? 'Clear the search or pick another filter.' : 'Go to the Map tab and tap a house to log your first knock.')+'</p></div>';
+}
+function renderStats(){
+  const c = counts(), td = today(); let kToday = 0, aToday = 0, kAll = 0, aAll = 0, soldToday = 0; const week = {};
+  for(let i = 6; i >= 0; i--) week[dayKey(Date.now() - i*864e5)] = 0;
+  S.doors.forEach(d => (d.visits || []).forEach(v => { if(!KNOCK.has(v.s)) return; const k = dayKey(v.t);
+    kAll++; if(ANSWERED.has(v.s)) aAll++; if(k === td){ kToday++; if(ANSWERED.has(v.s)) aToday++; if(v.s === 'sold') soldToday++; } if(k in week) week[k]++; }));
+  const rate = kAll ? Math.round(aAll/kAll*100) + '%' : '–', max = Math.max(1, ...Object.values(week)), tot = Math.max(1, S.doors.length);
+  const hv = (v, l) => '<div><div class="v">'+v+'</div><div class="l">'+l+'</div></div>';
+  const tile = (v, l) => '<div class="tile"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>';
+  $('#v-stats').innerHTML = '<div class="scroll"><div class="wrap">'
+    + '<div class="hero"><div class="cap">Today · '+new Date().toLocaleDateString([], {weekday:'long', month:'short', day:'numeric'})+'</div>'+hv(kToday, 'Knocks')+hv(aToday, 'Answered')+hv(soldToday, 'Sold')+'</div>'
+    + '<div class="tiles">'+tile(rate, 'Answer rate')+tile(c.interested + c.callback, 'Open leads')+tile(S.doors.filter(isDue).length, 'Follow-ups due')+'</div>'
+    + '<h3 class="sec">Knocks, last 7 days</h3><div class="panel"><div class="week">' + Object.entries(week).map(([k,n]) => { const [y,m,d] = k.split('-').map(Number);
+        return '<div class="d'+(k === td ? ' now' : '')+'"><span class="num">'+n+'</span><span class="col" style="height:'+Math.round(n/max*68)+'%"></span><span>'+new Date(y,m-1,d).toLocaleDateString([], {weekday:'short'})+'</span></div>'; }).join('') + '</div></div>'
+    + '<h3 class="sec">Doors by status · '+S.doors.length+' pinned</h3><div class="panel"><div class="bars">' + STATUS.map(s => '<div class="bar"><span>'+s.label+'</span><span class="track"><span class="fill s-'+s.k+'" style="width:'+(c[s.k]/tot*100)+'%"></span></span><span class="c">'+c[s.k]+'</span></div>').join('') + '</div></div></div></div>';
+}
+function renderBackup(){
+  const lb = +lsGet(LS.backup) || 0, n = S.doors.length, ls = +lsGet(LS.synced) || 0, pend = pendingCount();
+  const changed = S.doors.filter(d => (d.updated||0) > lb).length;
+  let cloud = '';
+  if(!cloudReady()) cloud = '<div class="card warn"><h2>Cloud sync is not connected</h2><p>Your doors are saved on this phone only. Use the backup file below to keep a copy.</p></div>';
+  else if(!session) cloud = '<div class="card cloud"><h2>Sign in to sync your doors</h2><p>Signed in, every pin saves to your account on its own and shows up on any device you sign in on. Doors already on this phone are uploaded the first time.</p>'
+    + '<form id="authForm"><div class="field"><label for="a-email">Email</label><input id="a-email" type="email" autocomplete="username" inputmode="email" value="'+esc(S.authEmail || '')+'"></div>'
+    + '<div class="field"><label for="a-pass">Password</label><input id="a-pass" type="password" autocomplete="current-password"></div>'
+    + (authMsg ? '<p class="msg'+(authOk ? ' ok' : '')+'" role="status">'+esc(authMsg)+'</p>' : '')
+    + '<div class="actions"><button class="btn primary" type="submit">Sign in</button><button class="btn" type="button" data-act="signup">Create account</button></div></form></div>';
+  else cloud = '<div class="card cloud"><h2>Cloud sync is on</h2>'
+    + '<div class="kv"><span>Signed in as</span><span>'+esc(session.user.email || '')+'</span></div>'
+    + '<div class="kv"><span>Doors</span><span>'+n+'</span></div>'
+    + '<div class="kv"><span>Status</span><span>'+(syncing ? 'Syncing…' : syncState === 'offline' ? 'Offline. '+pend+' change'+(pend === 1 ? '' : 's')+' waiting on this phone' : syncState === 'error' ? "Can't reach the cloud. "+pend+' change'+(pend === 1 ? '' : 's')+' waiting on this phone' : pend ? pend+' change'+(pend === 1 ? '' : 's')+' saving' : 'Everything is saved')+'</span></div>'
+    + '<div class="kv"><span>Last synced</span><span>'+(ls ? fmtWhen(ls) : 'Not yet')+'</span></div>'
+    + (syncState === 'error' ? '<p class="msg">If this lasts more than a few minutes, the database may be paused after a week without use. Sign in at supabase.com, open the project and restore it. Nothing on this phone is lost.</p>' : '')
+    + '<div class="actions"><button class="btn primary" data-act="sync-now">Sync now</button><button class="btn" data-act="signout">Sign out</button></div></div>';
+  $('#v-backup').innerHTML = '<div class="scroll"><div class="wrap">' + cloud
+    + '<div class="card"><h2>Backup file</h2><p>'+(session ? 'An extra copy you keep yourself. Worth downloading before a long break from knocking.' : 'A copy of every door in one file. Clearing browser data or switching phones loses your doors unless you have this or you are signed in.')+'</p>'
+    + '<p><b>'+n+' door'+(n === 1 ? '' : 's')+' on this phone.</b> '+(lb ? 'Last backup '+fmtWhen(lb)+(changed ? ', and '+changed+' door'+(changed === 1 ? ' has' : 's have')+' changed since.' : '. Nothing has changed since.') : 'No backup file yet.')+'</p>'
+    + '<div class="actions"><button class="btn" data-act="backup">Download backup file</button><button class="btn" data-act="restore">Restore from a backup</button></div></div>'
+    + '<div class="card"><h2>Spreadsheet export</h2><p>A CSV file with every door, its status, notes and visit count. Opens in Excel or Google Sheets.</p><div class="actions"><button class="btn" data-act="csv">Download CSV</button></div></div>'
+    + '</div></div>';
+}
+
+/* ---------- door sheet ---------- */
+function newDoor(lat, lng){
+  const d = {id:uid(), lat, lng, status:'none', address:'', name:'', phone:'', notes:'', follow:'', visits:[], created:Date.now(), updated:Date.now()};
+  S.sheet = {isNew:true, door:d}; openSheet(); drawPins(); fillAddress(d.id, lat, lng);
+}
+function openDoor(id){ const d = S.doors.find(x => x.id === id); if(!d) return; S.sheet = {isNew:false, door:clone(d)}; openSheet(); }
+function openSheet(){ renderSheet(); document.body.classList.add('sheet-open'); $('#sheet').scrollTop = 0; }
+function closeSheet(saveIt){
+  const s = S.sheet; if(!s) return;
+  if(saveIt !== false){ const d = s.door, typed = s.dirty && (d.address || d.name || d.phone || d.notes || d.follow);
+    if(s.isNew ? (d.status !== 'none' || typed) : s.dirty) putDoor(d); }
+  S.sheet = null; document.body.classList.remove('sheet-open'); render();
+}
+function renderSheet(){
+  const s = S.sheet, d = s.door, lv = lastVisit(d);
+  const sb = (k, wide) => '<button class="sbtn'+(wide ? ' wide' : '')+(d.status === k ? ' s-'+k : '')+'" data-act="set-status" data-k="'+k+'" aria-pressed="'+(d.status === k)+'"><span class="g s-'+k+'">'+ST[k].g+'</span>'+ST[k].label+'</button>';
+  $('#sheet').innerHTML = '<div class="sh-head"><div style="flex:1;min-width:0"><h2 id="sh-title">'+esc(d.address || (s.isNew ? 'New door' : 'Door'))+'</h2><p class="sh-sub">'+(lv ? 'Last visit: '+ST[lv.s].label+', '+fmtWhen(lv.t)+' · '+d.visits.length+' visit'+(d.visits.length === 1 ? '' : 's') : 'What happened at this door?')+'</p></div><button class="xbtn" data-act="sheet-close" aria-label="Close"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'
+    + '<div class="grp">Didn\'t answer</div><div class="sgrid">'+sb('noanswer', true)+'</div>'
+    + '<div class="grp">Answered</div><div class="sgrid">'+sb('interested')+sb('notint')+sb('callback')+sb('sold')+'</div>'
+    + '<div class="grp">Other</div><div class="sgrid">'+sb('dnk')+sb('none')+'</div>'
+    + '<div class="field"><label for="f-address">Address</label><input id="f-address" data-f="address" autocomplete="off" placeholder="Looks it up from the pin, or type it" value="'+esc(d.address)+'"></div>'
+    + '<div class="two"><div class="field"><label for="f-name">Name</label><input id="f-name" data-f="name" autocomplete="off" value="'+esc(d.name)+'"></div>'
+    + '<div class="field"><label for="f-phone">Phone</label><input id="f-phone" data-f="phone" type="tel" inputmode="tel" autocomplete="off" value="'+esc(d.phone)+'"></div></div>'
+    + '<div class="field"><label for="f-notes">Notes</label><textarea id="f-notes" data-f="notes" placeholder="Services they asked about, lot size, gate, dog in the yard">'+esc(d.notes)+'</textarea></div>'
+    + '<div class="field"><label for="f-follow">Follow up on</label><input id="f-follow" data-f="follow" type="date" value="'+esc(d.follow)+'"></div>'
+    + (d.visits.length ? '<div class="grp">Visit history</div><ul class="hist">'+d.visits.slice(-6).reverse().map(v => '<li><span class="sw s-'+esc(v.s)+'"></span>'+(ST[v.s] || ST.none).label+'<time>'+fmtWhen(v.t)+'</time></li>').join('')+'</ul>' : '')
+    + '<div class="actions">'+(s.isNew ? '<button class="btn" data-act="sheet-discard">Cancel</button>'
+        : '<button class="btn danger" data-act="door-delete">Delete pin</button><button class="btn" data-act="show-on-map">Show on map</button><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+d.lat.toFixed(6)+','+d.lng.toFixed(6)+'">Directions</a>')
+    + '<button class="btn primary" data-act="sheet-done">Done</button></div>';
+}
+
+/* ---------- files ---------- */
+function download(name, text, type){ const url = URL.createObjectURL(new Blob([text], {type})), a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); }
+function csv(){ const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  return ['Address,Name,Phone,Status,Last visit,Follow up,Visits,Notes,Latitude,Longitude'].concat(S.doors.map(d => { const lv = lastVisit(d);
+    return [d.address, d.name, d.phone, (ST[d.status] || ST.none).label, lv ? new Date(lv.t).toLocaleString() : '', d.follow, d.visits.length, d.notes, d.lat.toFixed(6), d.lng.toFixed(6)].map(q).join(','); })).join('\n'); }
+function restore(file){
+  const fr = new FileReader();
+  fr.onerror = () => toast("Couldn't read that file.");
+  fr.onload = () => { let j; try{ j = JSON.parse(fr.result); }catch(e){ toast("That isn't a door tracker backup file."); return; }
+    const arr = Array.isArray(j) ? j : (j && Array.isArray(j.doors) ? j.doors : null);
+    if(!arr){ toast("That isn't a door tracker backup file."); return; }
+    let added = 0, updated = 0;
+    arr.filter(validDoor).map(normDoor).forEach(d => { const i = S.doors.findIndex(x => x.id === d.id);
+      if(i < 0){ S.doors.push(d); added++; dirty.add(d.id); } else if((d.updated||0) > (S.doors[i].updated||0)){ S.doors[i] = d; updated++; dirty.add(d.id); } });
+    save(); saveMeta(); scheduleSync(); render(); toast('Restored: '+added+' added, '+updated+' updated. Nothing was removed.'); };
+  fr.readAsText(file);
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', e => {
+  const nav = e.target.closest('nav button'); if(nav){ S.view = nav.dataset.view; render(); return; }
+  const a = e.target.closest('[data-act]'); if(!a) return; const act = a.dataset.act;
+  if(act === 'door') openDoor(a.dataset.id);
+  else if(act === 'set-status'){ const s = S.sheet, d = s.door, k = a.dataset.k; d.status = k;
+    if(k !== 'none'){ const v = {t:Date.now(), s:k}; if(s.logged) d.visits[d.visits.length-1] = v; else { d.visits.push(v); s.logged = true; } if(d.visits.length > 60) d.visits = d.visits.slice(-60); }
+    else if(s.logged){ d.visits.pop(); s.logged = false; }
+    if(!(s.isNew && k === 'none')){ putDoor(clone(d)); s.isNew = false; s.dirty = false; }
+    renderSheet(); drawPins(); $('#todayN').textContent = knocksToday(); }
+  else if(act === 'sheet-done' || act === 'sheet-close') closeSheet(true);
+  else if(act === 'sheet-discard') closeSheet(false);
+  else if(act === 'door-delete'){ if(!a.classList.contains('armed')){ a.classList.add('armed'); a.textContent = 'Tap again to delete for good'; } else { removeDoor(S.sheet.door.id); closeSheet(false); toast('Pin deleted.'); } }
+  else if(act === 'show-on-map'){ const d = S.sheet.door; closeSheet(true); S.view = 'map'; S.hidden.delete(d.status); render(); if(map) map.setView([d.lat, d.lng], Math.max(map.getZoom(), 19)); }
+  else if(act === 'toggle-status'){ const k = a.dataset.k; S.hidden.has(k) ? S.hidden.delete(k) : S.hidden.add(k); drawPins(); }
+  else if(act === 'layer') setLayer(curLayer === 'street' ? 'satellite' : 'street');
+  else if(act === 'locate'){ if(S.me){ S.moved = true; map.setView([S.me.lat, S.me.lng], Math.max(map.getZoom(), 18)); } else toast(gpsHelp()); }
+  else if(act === 'pin-here'){ if(!S.me){ toast(gpsHelp()); return; }
+    map.setView([S.me.lat, S.me.lng], Math.max(map.getZoom(), 19)); newDoor(S.me.lat, S.me.lng);
+    if(S.me.acc > 25) toast('GPS is rough right now, about '+Math.round(S.me.acc)+' m. Check the pin is on the right house.'); }
+  else if(act === 'list-filter'){ S.listFilter = a.dataset.k; renderDoors(); }
+  else if(act === 'backup'){ if(!S.doors.length){ toast('No doors to back up yet.'); return; }
+    download('mn-lawn-pros-doors-backup-'+today()+'.json', JSON.stringify({app:'knock-log', version:1, exported:Date.now(), doors:S.doors}), 'application/json'); lsSet(LS.backup, String(Date.now())); renderBackup(); }
+  else if(act === 'restore') $('#restoreFile').click();
+  else if(act === 'signup') authGo('up');
+  else if(act === 'sync-now') syncNow(true);
+  else if(act === 'signout'){ if(!a.classList.contains('armed') && pendingCount()){ a.classList.add('armed'); a.textContent = 'Unsaved changes. Tap again to sign out'; } else sb.auth.signOut().catch(() => {}); }
+  else if(act === 'csv'){ if(!S.doors.length){ toast('No doors to export yet.'); return; } download('mn-lawn-pros-doors-'+today()+'.csv', csv(), 'text/csv'); }
+});
+document.addEventListener('input', e => {
+  const f = e.target.dataset && e.target.dataset.f;
+  if(f && S.sheet){ S.sheet.door[f] = e.target.value; S.sheet.dirty = true; return; }
+  if(e.target.id === 'q'){ S.q = e.target.value; renderDoors(); }
+});
+$('#restoreFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if(f) restore(f); e.target.value = ''; });
+$('#find').addEventListener('submit', e => { e.preventDefault(); const q = $('#findq').value.trim(); if(!q) return;
+  geoQueue(async () => { const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q='+encodeURIComponent(q), {headers:{Accept:'application/json'}});
+    if(!r.ok) return null; const j = await r.json(); return j && j[0] ? j[0] : null; })
+  .then(hit => { if(!hit){ toast("Couldn't find that place. Try adding the city and state."); return; }
+    S.moved = true; S.view = 'map'; render(); map.setView([+hit.lat, +hit.lon], 17); $('#findq').blur(); }); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && S.sheet) closeSheet(true); });
+document.addEventListener('submit', e => { if(e.target.id === 'authForm'){ e.preventDefault(); authGo('in'); } });
+
+load();
+initCloud();
+if(window.L){ initMap(); render(); if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); }
+else { $('#mapbox').innerHTML = '<div class="empty"><h2>The map didn\'t load</h2><p>Check your connection and reload. Your saved doors are safe and still show under Doors.</p></div>'; render(); }
+</script>
+</body>
+</html>
