@@ -1,4 +1,3 @@
-<script src="./quote-bridge.js"></script>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -595,5 +594,6 @@ initCloud();
 if(window.L){ initMap(); render(); if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); }
 else { $('#mapbox').innerHTML = '<div class="empty"><h2>The map didn\'t load</h2><p>Check your connection and reload. Your saved doors are safe and still show under Doors.</p></div>'; render(); }
 </script>
+<script src="./quote-bridge.js"></script>
 </body>
 </html>
